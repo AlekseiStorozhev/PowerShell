@@ -1,0 +1,11 @@
+Get-Mailbox -ResultSize Unlimited -OrganizationalUnit "OU=,OU=Clients,DC=ads,DC=,DC=tech" |
+Where-Object {$_.AccountDisabled -eq $false} |
+Select-Object @{Name="ФИО";Expression={$_.DisplayName}},
+              @{Name="ПочтовыйЯщик";Expression={$_.PrimarySmtpAddress}} |
+Export-Csv -Path "C:\2\Включенные_ящики.csv" -NoTypeInformation -Encoding UTF8
+
+Get-Mailbox -ResultSize Unlimited -OrganizationalUnit "OU=,OU=Clients,DC=ads,DC=,DC=tech" |
+Where-Object {$_.AccountDisabled -eq $true} |
+Select-Object @{Name="ФИО";Expression={$_.DisplayName}},
+              @{Name="ПочтовыйЯщик";Expression={$_.PrimarySmtpAddress}} |
+Export-Csv -Path "C:\2\Отключенные_ящики.csv" -NoTypeInformation -Encoding UTF8
