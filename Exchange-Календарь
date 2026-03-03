@@ -1,0 +1,5 @@
+Получить права которые уже есть у календаря
+Get-MailboxFolderPermission -Identity d.ilyukhin:\Календарь
+
+Предоставить права к календарю одного пользователя другому
+Add-MailboxFolderPermission -Identity d.ilyukhin:\Календарь -User v.shkaraputa -AccessRights Editor
