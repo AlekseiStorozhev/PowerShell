@@ -1,0 +1,94 @@
+$OU = "OU=Disabled-Users,OU=,OU=Clients,DC=ads,DC=,DC="
+$reportPath = "C:\PS\Отчет_AD_lastLogon_SP_Откл-УЗ.html"
+$spGroupName = "SP-Users"
+
+# Получаем список всех DC
+$DCs = Get-ADDomainController -Filter *
+
+# Получаем членов SP-группы
+$spGroupMembers = Get-ADGroupMember $spGroupName -Recursive |
+                  Select-Object -ExpandProperty DistinguishedName
+
+# Получаем пользователей (без lastLogon, будем брать отдельно с каждого DC)
+$users = Get-ADUser -SearchBase $OU -Filter * -Properties mail
+
+$result = foreach ($user in $users) {
+
+    $maxLastLogon = 0
+
+    # Проверяем lastLogon на каждом DC
+    foreach ($dc in $DCs) {
+        $u = Get-ADUser -Identity $user.SamAccountName `
+                        -Server $dc.HostName `
+                        -Properties lastLogon
+
+        if ($u.lastLogon -gt $maxLastLogon) {
+            $maxLastLogon = $u.lastLogon
+        }
+    }
+
+    # Конвертация
+    if ($maxLastLogon -and $maxLastLogon -ne 0) {
+        $lastLogonDate = [DateTime]::FromFileTime($maxLastLogon)
+    }
+    else {
+        $lastLogonDate = $null
+    }
+
+    # Проверка SP-доступа
+    $spStatus = if ($spGroupMembers -contains $user.DistinguishedName) {
+        "Есть доступ"
+    }
+    else {
+        "Нет доступа"
+    }
+
+    [PSCustomObject]@{
+        Имя                    = $user.Name
+        Почта                  = $user.mail
+        "Последний вход"       = $lastLogonDate
+        "Доступ к SharePoint"  = $spStatus
+    }
+}
+
+# Сортировка
+$result = $result | Sort-Object "Последний вход" -Descending
+
+# HTML стиль
+$style = @"
+<style>
+body { font-family: Segoe UI; font-size: 12px; }
+table { border-collapse: collapse; width: 75%; }
+th { background-color: #1F4E79; color: white; padding: 6px; }
+td { border: 1px solid #d0d0d0; padding: 5px; text-align: center; }
+tr:nth-child(even) { background-color: #f2f2f2; }
+</style>
+"@
+
+$html = $result | ForEach-Object {
+    "<tr>
+    <td>$($_.Имя)</td>
+    <td>$($_.Почта)</td>
+    <td>$($_.'Последний вход')</td>
+    <td>$($_.'Доступ к SharePoint')</td>
+    </tr>"
+}
+
+$header = @"
+<h2>Отчет по пользователям (AD lastLogon со всех DC + SharePoint)</h2>
+<table>
+<tr>
+<th>Имя</th>
+<th>Почта</th>
+<th>Последний вход</th>
+<th>Доступ к SharePoint</th>
+</tr>
+"@
+
+$footer = "</table>"
+
+$fullHtml = "<html><head>$style</head><body>$header$html$footer</body></html>"
+
+$fullHtml | Out-File $reportPath -Encoding UTF8
+
+Write-Host "Отчет создан: $reportPath"
