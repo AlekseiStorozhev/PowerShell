@@ -1,0 +1,99 @@
+# =================================================================================
+# НАСТРОЙКИ (ИЗМЕНИТЕ ПОД СЕБЯ)
+# =================================================================================
+$targetOU = "OU=,OU=Clients,DC=ads,DC=,DC=tech"
+$reportFolder = "C:\PS\Reports" # Папка должна существовать
+if (!(Test-Path $reportFolder)) { New-Item -ItemType Directory -Path $reportFolder }
+
+# Пути к файлам
+$pathAll      = Join-Path $reportFolder "Отчет_1_Все_Ящики.html"
+$pathAccess   = Join-Path $reportFolder "Отчет_2_Статистика_Доступа.html"
+$pathArchive  = Join-Path $reportFolder "Отчет_3_Архивные_Ящики.html"
+
+# CSS Стиль
+$style = @"
+<style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 12px; background-color: #f9f9f9; }
+    table { border-collapse: collapse; width: 95%; margin: 20px auto; background-color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    th { background-color: #1F4E79; color: white; padding: 10px; text-align: center; text-transform: uppercase; }
+    td { border: 1px solid #d0d0d0; padding: 8px; text-align: left; }
+    tr:nth-child(even) { background-color: #f2f2f2; }
+    tr:hover { background-color: #e9eff5; }
+    h2 { text-align: center; color: #1F4E79; }
+</style>
+"@
+
+# =================================================================================
+# ОТЧЕТ №1: ОБЩИЙ СПИСОК
+# =================================================================================
+Write-Host "Сбор данных для Отчета №1..." -ForegroundColor Cyan
+$mailboxes = Get-Mailbox -OrganizationalUnit $targetOU -ResultSize Unlimited
+
+$data1 = foreach ($mb in $mailboxes) {
+    $stats = Get-MailboxStatistics -Identity $mb.DistinguishedName -ErrorAction SilentlyContinue
+    [PSCustomObject]@{
+        DisplayName          = $mb.DisplayName
+        UPN                  = $mb.UserPrincipalName
+        Email                = $mb.PrimarySmtpAddress
+        Type                 = $mb.RecipientTypeDetails
+        Created              = $mb.WhenCreated
+        Changed              = $mb.WhenChanged
+        SizeMB               = if ($stats.TotalItemSize) { [Math]::Round($stats.TotalItemSize.Value.ToMB(), 2) } else { 0 }
+        LastLogon            = $stats.LastLogonTime
+        Enabled              = $mb.IsMailboxEnabled
+    }
+}
+
+$rows1 = $data1 | ForEach-Object {
+    "<tr><td>$($_.DisplayName)</td><td>$($_.UPN)</td><td>$($_.Email)</td><td>$($_.Type)</td><td>$($_.Created)</td><td>$($_.Changed)</td><td>$($_.SizeMB)</td><td>$($_.LastLogon)</td><td>$($_.Enabled)</td></tr>"
+}
+$html1 = "<html><head>$style</head><body><h2>Общий список всех почтовых ящиков (Mailboxes)</h2><table><tr><th>Имя</th><th>UPN</th><th>Email</th><th>Тип</th><th>Создан</th><th>Изменен</th><th>Размер (MB)</th><th>Вход</th><th>Вкл</th></tr>$($rows1 -join '')</table></body></html>"
+$html1 | Out-File $pathAll -Encoding UTF8
+
+# =================================================================================
+# ОТЧЕТ №2: СТАТИСТИКА ДОСТУПА
+# =================================================================================
+Write-Host "Сбор данных для Отчета №2..." -ForegroundColor Cyan
+$data2 = foreach ($mb in $mailboxes) {
+    $stats = Get-MailboxStatistics -Identity $mb.DistinguishedName -ErrorAction SilentlyContinue
+    if ($stats) {
+        [PSCustomObject]@{
+            DisplayName    = $mb.DisplayName
+            LastLogon      = $stats.LastLogonTime
+            LastUser       = $stats.LastLoggedOnUserAccount
+            SizeMB         = [Math]::Round($stats.TotalItemSize.Value.ToMB(), 2)
+            Items          = $stats.ItemCount
+        }
+    }
+}
+
+$rows2 = $data2 | ForEach-Object {
+    "<tr><td>$($_.DisplayName)</td><td>$($_.LastLogon)</td><td>$($_.LastUser)</td><td>$($_.SizeMB)</td><td>$($_.Items)</td></tr>"
+}
+$html2 = "<html><head>$style</head><body><h2>Статистика доступа и использования</h2><table><tr><th>Имя</th><th>Последний вход</th><th>Кто заходил</th><th>Размер (MB)</th><th>Элементов</th></tr>$($rows2 -join '')</table></body></html>"
+$html2 | Out-File $pathAccess -Encoding UTF8
+
+# =================================================================================
+# ОТЧЕТ №3: АРХИВНЫЕ ЯЩИКИ
+# =================================================================================
+Write-Host "Сбор данных для Отчета №3..." -ForegroundColor Cyan
+$archiveMBs = Get-Mailbox -OrganizationalUnit $targetOU -ResultSize Unlimited -Filter "ArchiveStatus -ne 'None'"
+
+$data3 = foreach ($mb in $archiveMBs) {
+    [PSCustomObject]@{
+        DisplayName = $mb.DisplayName
+        UPN         = $mb.UserPrincipalName
+        Email       = $mb.PrimarySmtpAddress
+        Database    = $mb.ArchiveDatabase
+        Status      = $mb.ArchiveStatus
+        Quota       = $mb.ArchiveQuota
+    }
+}
+
+$rows3 = $data3 | ForEach-Object {
+    "<tr><td>$($_.DisplayName)</td><td>$($_.UPN)</td><td>$($_.Email)</td><td>$($_.Database)</td><td>$($_.Status)</td><td>$($_.Quota)</td></tr>"
+}
+$html3 = "<html><head>$style</head><body><h2>Архивные почтовые ящики</h2><table><tr><th>Имя</th><th>UPN</th><th>Email</th><th>База архива</th><th>Статус</th><th>Квота</th></tr>$($rows3 -join '')</table></body></html>"
+$html3 | Out-File $pathArchive -Encoding UTF8
+
+Write-Host "Все отчеты успешно созданы в папке: $reportFolder" -ForegroundColor Green
