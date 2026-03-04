@@ -75,7 +75,6 @@ $html = $result | ForEach-Object {
 }
 
 $header = @"
-<h2>Отчет по пользователям (AD lastLogon со всех DC + SharePoint)</h2>
 <table>
 <tr>
 <th>Имя</th>
