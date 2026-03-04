@@ -1,0 +1,105 @@
+$OU = "OU=,OU=Clients,DC=ads,DC=,DC="
+$reportPath = "C:\scripts\Отчет_OU_Exchange_SP.html"
+$inactiveDays = 90
+$limitDate = (Get-Date).AddDays(-$inactiveDays)
+
+# Получаем членов SP-группы один раз
+$spGroupMembers = Get-ADGroupMember "SP-Users" -Recursive | 
+                  Select-Object -ExpandProperty DistinguishedName
+
+# Получаем пользователей из OU
+$users = Get-ADUser -SearchBase $OU -Filter * -Properties mail
+
+$result = foreach ($user in $users) {
+
+    $mailbox = Get-Mailbox -Identity $user.SamAccountName -ErrorAction SilentlyContinue
+
+    if ($mailbox) {
+
+        $stats = Get-MailboxStatistics -Identity $mailbox.DistinguishedName
+        $lastLogon = $stats.LastLogonTime
+
+        $days = if ($lastLogon) {
+            (New-TimeSpan $lastLogon (Get-Date)).Days
+        } else {
+            $null
+        }
+
+        $status = if (!$lastLogon) {
+            "Никогда не входил"
+        }
+        elseif ($lastLogon -lt $limitDate) {
+            "Неактивен"
+        }
+        else {
+            "Активен"
+        }
+
+        $spStatus = if ($spGroupMembers -contains $user.DistinguishedName) {
+            "Есть доступ к SP"
+        } else {
+            "Нет доступа к SP"
+        }
+
+        $sortOrder = switch ($status) {
+            "Неактивен" { 1 }
+            "Никогда не входил" { 2 }
+            "Активен" { 3 }
+        }
+
+        [PSCustomObject]@{
+            Имя                = $mailbox.DisplayName
+            Почта              = $mailbox.PrimarySmtpAddress
+            "Последний вход"   = $lastLogon
+            "Дней с входа"     = if ($days -ne $null) { $days } else { "" }
+            Статус             = $status
+            "SharePoint"       = $spStatus
+            SortOrder          = $sortOrder
+        }
+    }
+}
+
+# Сортировка
+$result = $result | Sort-Object SortOrder, "Дней с входа" -Descending
+
+# HTML стиль (без цветовой индикации)
+$style = @"
+<style>
+body { font-family: Segoe UI; font-size: 12px; }
+table { border-collapse: collapse; width: 100%; }
+th { background-color: #1F4E79; color: white; padding: 6px; }
+td { border: 1px solid #d0d0d0; padding: 5px; text-align: center; }
+tr:nth-child(even) { background-color: #f2f2f2; }
+</style>
+"@
+
+$html = $result | ForEach-Object {
+    "<tr>
+    <td>$($_.Имя)</td>
+    <td>$($_.Почта)</td>
+    <td>$($_.'Последний вход')</td>
+    <td>$($_.'Дней с входа')</td>
+    <td>$($_.Статус)</td>
+    <td>$($_.SharePoint)</td>
+    </tr>"
+}
+
+$header = @"
+<table>
+<tr>
+<th>Имя</th>
+<th>Почта</th>
+<th>Последний вход</th>
+<th>Дней с момента входа</th>
+<th>Статус</th>
+<th>Доступ к SharePoint</th>
+</tr>
+"@
+
+$footer = "</table>"
+
+$fullHtml = "<html><head>$style</head><body>$header$html$footer</body></html>"
+
+$fullHtml | Out-File $reportPath -Encoding UTF8
+
+Write-Host "Отчет создан: $reportPath"
