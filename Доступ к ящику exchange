@@ -1,0 +1,11 @@
+# Дать полный доступ к ящику
+Add-MailboxPermission -Identity "m.volkov@ivan.ru" -User "m.ivan@ivan.ru" -AccessRights FullAccess -InheritanceType All
+
+# Дать право отправки от имени
+Add-RecipientPermission "m.volkov@ivan.ru" -Trustee "m.ivan@ivan.ru" -AccessRights SendAs
+
+Add-ADPermission -Identity "m.volkov@ivan.ru" -User "m.ivan@ivan.ru" -ExtendedRights "Send As"
+
+Add-RecipientPermission "m.volkov@ivan.ru" -Trustee "m.ivan@ivan.ru" -AccessRights "SendAs"
+
+Get-Mailbox -Identity customers | Format-List Name,DisplayName,Alias,PrimarySmtpAddress
