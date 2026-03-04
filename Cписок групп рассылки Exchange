@@ -1,0 +1,3 @@
+Get-DistributionGroup -Identity "allusers5@ivanov.ru" | Get-ADObject | Select-Object Name, WhenCreated
+
+Get-DistributionGroup "allusers5@ivanov.ru" | Select Name,WhenCreated
