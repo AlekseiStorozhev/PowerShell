@@ -1,0 +1,10 @@
+gci 'C:\inetpub\logs' -Include '*.log' -Recurse | Where-Object { $_.LastWriteTime -LT (Get-Date).AddDays(-30) } | ForEach-Object {
+    Write-Output "Попытка удалить: $($_.FullName)"
+    try {
+        $_ | Remove-Item -Force -ErrorAction Stop
+        Write-Output "Успешно удалён: $($_.FullName)"
+    }
+    catch {
+        Write-Error "Ошибка при удалении $($_.FullName): $($_.Exception.Message)"
+    }
+}
